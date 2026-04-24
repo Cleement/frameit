@@ -1,10 +1,11 @@
 #!/bin/bash
 # --------------------------------------------------------------------
-# Merge dev into main, excluding dev-only files, then push to public.
+# Merge dev into main, excluding dev-only files, then push to both
+# remotes (origin = gitlab.meteo.fr, public = git.meteo.fr).
 #
 # Usage:
-#     ./merge_to_main.sh              # default commit message
-#     ./merge_to_main.sh "my message" # custom commit message
+#     ./dev_files/merge_to_main.sh              # default commit message
+#     ./dev_files/merge_to_main.sh "my message" # custom commit message
 # --------------------------------------------------------------------
 
 set -e
@@ -22,28 +23,33 @@ fi
 git checkout main
 
 # Merge dev without committing
-git merge dev --no-commit --no-ff
+if git merge dev --no-commit --no-ff 2>/dev/null; then
+    # Remove dev-only files from the merge
+    if [ -d "$DEV_DIR" ]; then
+        git reset HEAD "$DEV_DIR" > /dev/null 2>&1
+        rm -rf "$DEV_DIR"
+        echo "Excluded $DEV_DIR from merge."
+    fi
 
-# Remove dev-only files from the merge
-if [ -d "$DEV_DIR" ]; then
-    git reset HEAD "$DEV_DIR" > /dev/null 2>&1
-    rm -rf "$DEV_DIR"
-    echo "Excluded $DEV_DIR from merge."
+    # Check if there is anything to commit
+    if git diff --cached --quiet; then
+        echo "Nothing new to merge."
+        git merge --abort 2>/dev/null || true
+    else
+        git commit -m "$MSG"
+        echo "Merge committed."
+    fi
+else
+    echo "Already up to date."
 fi
 
-# Check if there is anything to commit
-if git diff --cached --quiet; then
-    echo "Nothing to merge. main is already up to date."
-    git merge --abort 2>/dev/null || true
-    git checkout dev
-    exit 0
-fi
-
-# Commit and push
-git commit -m "$MSG"
+# Push main to both remotes
+git push origin main
+echo "Pushed main to origin (gitlab.meteo.fr)."
 git push public main
-echo "Done. main pushed to public."
+echo "Pushed main to public (git.meteo.fr)."
+
+echo "Done."
 
 # Switch back to dev
 git checkout dev
-
