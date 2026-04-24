@@ -21,7 +21,6 @@ All work happens on short-lived feature branches created from `dev`. Code reache
 ```
 frameit/
     src/frameit/         # source code
-    tests/               # (future) unit tests
     README.md
     pyproject.toml
     .gitignore
