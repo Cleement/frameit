@@ -15,7 +15,7 @@ from atmospheric and oceanic model outputs.
   - Prescribed track
   - Pressure-wind algorithm
   - Fixed box
-  - AI-based tracking via [utrack](#)
+  - AI-based tracking (utrack)
 - **Normalized outputs** — standardized NetCDF outputs to facilitate inter-model and inter-simulation comparisons, 
   and enable AI dataset creation
 - **Data reduction** — reduce data volume for easier manipulation and sharing with partners
