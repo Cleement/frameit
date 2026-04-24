@@ -21,6 +21,7 @@ All work happens on short-lived feature branches created from `dev`. Code reache
 ```
 frameit/
     src/frameit/         # source code
+    tests/               # (future) unit tests
     README.md
     pyproject.toml
     .gitignore
@@ -32,7 +33,7 @@ frameit/
         ...
 ```
 
-The `dev_files/` directory exists only on the `dev` branch. It is automatically excluded when merging into `main`.
+The `dev_files/` directory exists only on the `dev` branch. It must never appear on `main`.
 
 ## Remotes
 
@@ -99,19 +100,28 @@ The script does the following:
 1. Checks that the working tree is clean.
 2. Switches to `main`.
 3. Merges `dev` without committing.
-4. Removes `dev_files/` from the merge.
-5. Commits the merge.
-6. Pushes `main` to `origin` (gitlab.meteo.fr).
-7. Pushes `main` to `public` (git.meteo.fr).
-8. Switches back to `dev`.
+4. Removes `dev_files/` from the merge (handles conflicts automatically).
+5. If there are conflicts outside `dev_files/`, the script stops and asks for manual resolution.
+6. If only `dev_files/` content was modified, nothing is committed and no push happens.
+7. Commits the merge.
+8. Pushes `main` to `origin` (gitlab.meteo.fr).
+9. Pushes `main` to `public` (git.meteo.fr).
+10. Switches back to `dev`.
+
+## Important notes
+
+- If a feature branch only modifies files inside `dev_files/`, running the merge script will have no effect on `main`. This is expected behavior.
+- The merge script must be run from a machine that has access to both `gitlab.meteo.fr` and `git.meteo.fr`.
+- SSH key or stored credentials are needed for both remotes.
 
 ### Manual merge (if needed)
 
 ```bash
 git checkout main
 git merge dev --no-commit --no-ff
-git reset HEAD dev_files/
+git rm -rf dev_files/
 rm -rf dev_files/
+git add -A
 git commit -m "Merge dev into main"
 git push origin main
 git push public main
