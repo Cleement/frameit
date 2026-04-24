@@ -22,25 +22,33 @@ fi
 # Switch to main
 git checkout main
 
-# Merge dev without committing
-if git merge dev --no-commit --no-ff 2>/dev/null; then
-    # Remove dev-only files from the merge
-    if [ -d "$DEV_DIR" ]; then
-        git reset HEAD "$DEV_DIR" > /dev/null 2>&1
-        rm -rf "$DEV_DIR"
-        echo "Excluded $DEV_DIR from merge."
-    fi
+# Attempt merge (may fail due to conflicts on dev_files)
+MERGE_OK=true
+git merge dev --no-commit --no-ff 2>/dev/null || MERGE_OK=false
 
-    # Check if there is anything to commit
-    if git diff --cached --quiet; then
-        echo "Nothing new to merge."
-        git merge --abort 2>/dev/null || true
-    else
-        git commit -m "$MSG"
-        echo "Merge committed."
-    fi
+# Remove dev-only files whether merge succeeded or conflicted
+if [ -d "$DEV_DIR" ]; then
+    git rm -rf "$DEV_DIR" > /dev/null 2>&1 || true
+    rm -rf "$DEV_DIR"
+    echo "Excluded $DEV_DIR from merge."
+fi
+
+# Check for remaining conflicts (outside dev_files)
+if git diff --name-only --diff-filter=U | grep -qv "^${DEV_DIR}/"; then
+    echo "Error: conflicts found outside $DEV_DIR. Resolve them manually."
+    exit 1
+fi
+
+# Stage everything
+git add -A
+
+# Check if there is anything to commit
+if git diff --cached --quiet; then
+    echo "Nothing new to merge."
+    git merge --abort 2>/dev/null || true
 else
-    echo "Already up to date."
+    git commit -m "$MSG"
+    echo "Merge committed."
 fi
 
 # Push main to both remotes
