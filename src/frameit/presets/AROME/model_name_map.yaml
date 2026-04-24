@@ -1,0 +1,31 @@
+# Static key for AROME model configuration
+
+# Name of coordinates
+# ----------------------------
+
+name_time_dim: "valid_time"
+name_vertical_dim: "heightAboveGround"
+name_lat_dim: "latitude"
+name_lon_dim: "longitude"
+
+# # Latitude/loongitude vectors
+# # ----------------------------
+name_latitude: "latitude"
+name_longitude: "longitude"
+
+# Name of velocities 
+# ------------------
+velocity_aliases : 
+  u_velocity: "u"
+  v_velocity: "v"
+  w_velocity: "w"
+
+# Name of variables for trackers
+# -----------------------------
+tracking_var_aliases:
+  u10m:  "u10"
+  v10m:  "v10"
+  mslp: "prmsl"
+  geopot: "z"
+  pv:   "pv"
+  absv :  "absv"

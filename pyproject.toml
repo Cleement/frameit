@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "frameit"
+version = "1.0.0"
+requires-python = ">=3.10"
+description = "Focused Regional Analysis of Modeled Events with Integrated Tracking"
+license = {text = "Apache-2.0"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[project.scripts]
+frameit = "frameit.cli:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = [
+  "DRAFT",
+  "notebooks",
+  "docs/build",
+  "src/frameit.egg-info",
+  ".venv",
+  "build",
+  "dist",
+]
+
+[tool.ruff.lint]
+# Ensemble volontairement conservateur, utile, peu bruyant
+select = ["E", "F", "I", "UP", "B"]
+fixable = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+# Fréquent dans les packages: imports ré-exportés dans __init__.py
+"src/frameit/__init__.py" = ["F401"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+

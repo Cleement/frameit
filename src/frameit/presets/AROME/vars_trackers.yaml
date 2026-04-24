@@ -1,0 +1,40 @@
+# Needed variables for tracking Cyclones
+# --------------------------------------
+
+
+requested_variables_by_method:
+  wind_pressure:
+    surface:
+      variables: ["u10", "v10", "prmsl"]
+
+  other_method:
+    isobaricInhPa:
+      variables: ["u", "v", "z", "pv"]
+      level_selection: "values"                # ou "values" "indices"; "all"
+      level_values:  [850,800,750,700]         # if level_selection = "values" 
+      level_indices: []                        # if level_selection = "indices"
+    surface:
+      variables: ["prmsl"]
+
+  fixed_box:
+    vert_coords:
+      variables: []    # vide
+
+  prescribed_track:
+    vert_coords:
+      variables: []    # vide
+
+  utrack:
+    surface:
+      variables: ["u10", "v10"]
+    isobaricInhPa:
+      variables: ["absv"]
+      level_selection: "values"                # ou "values" "indices"; "all"
+      level_values:  [850]         # if level_selection = "values" 
+      level_indices: []  
+
+
+
+
+
+

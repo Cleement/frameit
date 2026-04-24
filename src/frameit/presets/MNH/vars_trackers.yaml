@@ -1,0 +1,36 @@
+# Needed variables for tracking Cyclones (MNH)
+# --------------------------------------------
+
+#  => lev 0 is not physic in MNH
+
+requested_variables_by_method:
+  wind_pressure:
+    surface:
+      variables: ["UM10", "VM10", "MSLP"]
+    level:
+      variables: ["UT", "VT", "THT"]
+      level_selection: "indices"         # ou "values" "indices"; "all"
+      level_values:  []                  # if level_selection = "values" 
+      level_indices: [1,3,5]             # if level_selection = "indices" ; lev 0 is not physic in MNH
+
+  other_method:
+    level:
+      variables: ["UT","VT"]
+      level_selection: "indices"                # ou "values" "indices"; "all"
+      level_values:  []                  # if level_selection = "values" 
+      level_indices: [1,2]                  # if level_selection = "indices"
+    surface:
+      variables: ["MSLP"]
+
+  fixed_box:
+    surface:
+      variables: []    # vide
+
+  prescribed_track:
+    surface:
+      variables: []    # vide
+
+  utrack:
+    surface:
+      variables: ["UM10", "VM10"]
+

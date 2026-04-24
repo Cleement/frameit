@@ -1,0 +1,313 @@
+# Copyright 2026 Clément Soufflet, Météo-France
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file or http://www.apache.org/licenses/LICENSE-2.0
+
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+
+def _sanitize_sys_path_user_site() -> None:
+    """
+    Ensure FrameIt CLI does not import packages from the user site-packages (e.g. ~/.local),
+    which can shadow the conda environment and break version consistency.
+    """
+    # Fast path: if PYTHONNOUSERSITE is set, user site is usually not injected.
+    # Still sanitize defensively because PYTHONPATH or .pth files may add ~/.local manually.
+    user_base = Path(os.path.expanduser("~/.local")).resolve()
+
+    new_path: list[str] = []
+    for p in sys.path:
+        try:
+            rp = Path(p).resolve()
+        except Exception:
+            new_path.append(p)
+            continue
+
+        # Drop typical user installs, including ~/.local and user site-packages.
+        if user_base in rp.parents or rp == user_base:
+            continue
+
+        new_path.append(p)
+
+    sys.path[:] = new_path
+
+
+_sanitize_sys_path_user_site()
+
+# Imports only after sys.path is sanitized
+import argparse  # noqa: E402
+import logging  # noqa: E402
+import platform  # noqa: E402
+from typing import Any  # noqa: E402
+
+from frameit.core.runner import FrameitRunner  # noqa: E402
+from frameit.core.settings_class import SimulationConfig  # noqa: E402
+from frameit.io.netcdf_export import export_outputs  # noqa: E402
+from frameit.utils import setup_frameit_logging  # noqa: E402
+
+_DEFAULT_INSTITUTION = "LACy, Université de La Réunion, CNRS, Météo-France"
+
+
+def _package_version(pkg_name: str) -> str | None:
+    try:
+        from importlib.metadata import version
+
+        return version(pkg_name)
+    except Exception:
+        return None
+
+
+def _probe_module(mod_name: str) -> dict[str, Any]:
+    out = {"ok": False, "version": None, "path": None, "error": None}
+    try:
+        mod = __import__(mod_name)
+        out["ok"] = True
+        out["version"] = getattr(mod, "__version__", None) or _package_version(mod_name)
+        out["path"] = getattr(mod, "__file__", None)
+        return out
+    except Exception as exc:
+        out["error"] = str(exc)
+        return out
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="frameit", description="FrameIt CLI")
+    sub = p.add_subparsers(dest="command", required=True)
+
+    # run
+    pr = sub.add_parser("run", help="Run FrameIt from a YAML configuration file.")
+    pr.add_argument("config", type=Path, help="Path to the YAML configuration file")
+    pr.add_argument(
+        "--log-level",
+        default=None,
+        choices=("DEBUG", "INFO", "WARNING", "ERROR"),
+        help="Override log level. If not set, uses conf.DEBUG to choose DEBUG/INFO.",
+    )
+    pr.add_argument(
+        "--no-hdf5-debug-pop",
+        action="store_true",
+        help="Do not remove HDF5_DEBUG from the environment.",
+    )
+
+    # Exports enabled by default, disable with --no-*
+    pr.add_argument(
+        "--no-export-netcdf",
+        dest="export_netcdf",
+        action="store_false",
+        default=True,
+        help="Disable NetCDF export (enabled by default).",
+    )
+    pr.add_argument(
+        "--no-export-polar",
+        dest="export_polar",
+        action="store_false",
+        default=True,
+        help="Disable polar export (enabled by default).",
+    )
+    pr.add_argument(
+        "--no-export-cart",
+        dest="export_cart",
+        action="store_false",
+        default=True,
+        help="Disable cartesian export (enabled by default).",
+    )
+    pr.add_argument(
+        "--compress-level",
+        type=int,
+        default=1,
+        help="NetCDF compression level (0-9). Default: 1.",
+    )
+    pr.add_argument(
+        "--institution",
+        type=str,
+        default=_DEFAULT_INSTITUTION,
+        help="Institution string stored in exported files.",
+    )
+
+    # validate
+    pv = sub.add_parser("validate", help="Load and validate the YAML configuration (lightweight).")
+    pv.add_argument("config", type=Path, help="Path to the YAML configuration file")
+
+    # info (fusion of version and doctor, verbose by default)
+    pi = sub.add_parser(
+        "info", help="Print FrameIt and environment information (verbose by default)."
+    )
+    pi.add_argument("--short", action="store_true", help="Print only 'FrameIt <version>'")
+
+    return p
+
+
+def _configure_logging(conf: SimulationConfig, log_level_override: str | None) -> None:
+    """
+    Initialise FrameIt logging for the ``run`` sub-command.
+
+    Parameters
+    ----------
+    conf : SimulationConfig
+        Configuration object.  Reads ``frameit_output_dir``, ``DEBUG``, and
+        ``simulation_name``.
+    log_level_override : str or None
+        Explicit log level (``"DEBUG"``, ``"INFO"``, …).  When ``None``, the
+        level is ``"DEBUG"`` if ``conf.DEBUG`` is truthy, else ``"INFO"``.
+    """
+    level = log_level_override
+    if level is None:
+        level = "DEBUG" if getattr(conf, "DEBUG", False) else "INFO"
+
+    log_path = setup_frameit_logging(
+        conf.frameit_output_dir,
+        level=level,
+        simu_name=getattr(conf, "simulation_name", None),
+    )
+    logging.getLogger("frameit").info("Logging initialized: %s", str(log_path))
+
+
+def _cmd_validate(cfg_path: Path) -> int:
+    conf = SimulationConfig.from_yaml_with_model_preset(cfg_path)
+
+    out_dir = Path(conf.frameit_output_dir)
+    if not out_dir.exists():
+        print(f"WARNING: output directory does not exist: {out_dir}")
+    elif not os.access(out_dir, os.W_OK):
+        print(f"WARNING: no write permission on output directory: {out_dir}")
+
+    print("OK: configuration loaded successfully")
+    return 0
+
+
+def _cmd_info(short: bool) -> int:
+    frameit_ver = _package_version("frameit") or "unknown"
+    if short:
+        print(f"FrameIt {frameit_ver}")
+        return 0
+
+    print(f"FrameIt: {frameit_ver}")
+    print(f"Python: {platform.python_version()} ({sys.executable})")
+    print(f"Platform: {platform.system()} {platform.release()} ({platform.machine()})")
+
+    env_keys = ("HDF5_DEBUG", "ECCODES_DEFINITION_PATH", "ECCODES_SAMPLES_PATH")
+    print("Environment:")
+    for k in env_keys:
+        print(f"  {k}={os.environ.get(k, '')}")
+
+    modules = {
+        "numpy": _probe_module("numpy"),
+        "xarray": _probe_module("xarray"),
+        "dask": _probe_module("dask"),
+        "cfgrib": _probe_module("cfgrib"),
+        "eccodes": _probe_module("eccodes"),
+        "xesmf": _probe_module("xesmf"),
+        "netCDF4": _probe_module("netCDF4"),
+        "h5py": _probe_module("h5py"),
+    }
+
+    print("Modules:")
+    for name in sorted(modules):
+        m = modules[name]
+        if m["ok"]:
+            ver = m["version"] or ""
+            print(f"  {name}: OK {ver}".rstrip())
+        else:
+            print(f"  {name}: MISSING")
+            if m["error"]:
+                print(f"    error: {m['error']}")
+
+    critical_missing = [k for k in ("numpy", "xarray") if not modules[k]["ok"]]
+    if critical_missing:
+        print(f"Overall: FAIL (missing critical modules: {', '.join(critical_missing)})")
+        return 1
+
+    print("Overall: OK")
+    return 0
+
+
+def _cmd_run(args: argparse.Namespace) -> int:
+    """
+    Execute the ``frameit run`` sub-command.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed CLI arguments.  Consumed attributes: ``config``, ``log_level``,
+        ``no_hdf5_debug_pop``, ``export_netcdf``, ``export_polar``,
+        ``export_cart``, ``compress_level``, ``institution``.
+
+    Returns
+    -------
+    int
+        Exit code: ``0`` on success.
+    """
+    if not args.no_hdf5_debug_pop:
+        os.environ.pop("HDF5_DEBUG", None)
+
+    if not (0 <= int(args.compress_level) <= 9):
+        raise ValueError("--compress-level must be in [0, 9]")
+
+    conf = SimulationConfig.from_yaml_with_model_preset(args.config)
+
+    _configure_logging(conf, args.log_level)
+    logger = logging.getLogger("frameit")
+
+    runner = FrameitRunner(conf)
+    runner.run()
+
+    out_dir = Path(conf.frameit_output_dir).resolve()
+
+    if args.export_netcdf:
+        with runner.timer.section("Netcdf export"):
+            export_outputs(
+                runner,
+                institution=str(args.institution),
+                out_dir=out_dir,
+                export_polar=bool(args.export_polar),
+                export_cart=bool(args.export_cart),
+                compress_level=int(args.compress_level),
+            )
+        logger.info("NetCDF export done.")
+    else:
+        logger.info("NetCDF export skipped (--no-export-netcdf).")
+
+    runner.timer.log_summary(logger, title="FrameIt runtime summary")
+    logger.info("FrameIt ends correctly")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> None:
+    """
+    Entry point for the ``frameit`` CLI.
+
+    Parameters
+    ----------
+    argv : list[str] or None, optional
+        Argument list to parse.  When ``None``, :attr:`sys.argv` is used.
+
+    Raises
+    ------
+    SystemExit
+        Always raised with exit code ``0`` on success, ``1`` on unhandled
+        exception, or ``2`` for an unknown sub-command.
+    """
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
+    # Minimal fallback logging for unexpected errors before FrameIt logging is configured
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+
+    try:
+        if args.command == "run":
+            code = _cmd_run(args)
+        elif args.command == "validate":
+            code = _cmd_validate(args.config)
+        elif args.command == "info":
+            code = _cmd_info(short=bool(args.short))
+        else:
+            code = 2
+    except Exception:
+        logging.getLogger("frameit").exception("FrameIt CLI failed")
+        code = 1
+
+    raise SystemExit(code)

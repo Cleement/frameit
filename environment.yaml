@@ -1,0 +1,55 @@
+# ==============================================
+# Conda environment file for the FrameIt project
+# ==============================================
+#
+# To create and activate the environment:
+#
+# 1. Create the environment:
+#    conda env create -f environment.yaml
+#
+# 2. Activate it:
+#    conda activate frameit_env
+#
+# 3. To update later:
+#    conda env update -f environment.yaml --prune
+#
+# 4. To deactivate:
+#    conda deactivate
+#
+# Procedure to recreate the env:
+#    conda deactivate
+#    conda env remove -n frameit_env
+#    conda env create -f environment.yaml
+#
+# Python 3.10 is recommended for compatibility.
+# This file is recommended for users with conda.
+# Once the environment is activated, install frameit with:
+#    pip install frameit
+
+name: frameit_env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - xarray>=2023.8.0
+  - dask
+  - numpy>=1.26
+  - scipy
+  - cfgrib>=0.9.15
+  - eccodes>=2.37
+  - pyyaml>=6.0
+  - pyproj>=3.0
+  - xesmf
+  - matplotlib
+  - netcdf4>=1.7
+  - h5netcdf
+  - h5py
+  - pip
+# For developpers : 
+  - ruff
+  - sphinx
+  - sphinx_rtd_theme
+  - furo
+  - sphinx-autodoc-typehints
+  - pip:
+    - pytest

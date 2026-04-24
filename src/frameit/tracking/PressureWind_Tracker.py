@@ -1,0 +1,272 @@
+# Copyright 2026 Clément Soufflet, Météo-France
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file or http://www.apache.org/licenses/LICENSE-2.0
+
+# --- Imports ---
+from typing import ClassVar
+
+import numpy as np
+import xarray as xr
+
+from frameit.core.settings_class import SimulationConfig
+
+from .tracker_core import TcTracker, register_tracker
+
+
+def pressure_wind_tracker(
+    mslp: xr.DataArray,
+    zonal_10m: xr.DataArray,
+    merid_10m: xr.DataArray,
+    *,
+    time_dim: str = "time",
+    half_search: int,
+    half_refine: int,
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """
+    Sequential cyclone-centre tracker using MSLP and 10 m wind.
+
+    At ``t = 0``: global MSLP minimum, refined by the 10 m wind minimum
+    within ``±half_refine`` grid points.
+
+    At ``t ≥ 1``: MSLP minimum within ``±half_search`` around the previous
+    centre (first guess), refined by the wind minimum within ``±half_refine``.
+
+    Parameters
+    ----------
+    mslp : xr.DataArray
+        Mean sea-level pressure, shape ``(time, ..., y, x)``.
+    zonal_10m : xr.DataArray
+        10 m zonal wind component, same shape and dimensions as ``mslp``.
+    merid_10m : xr.DataArray
+        10 m meridional wind component, same shape and dimensions as ``mslp``.
+    time_dim : str, optional
+        Name of the time dimension. Default ``"time"``.
+    half_search : int
+        Half-width of the MSLP search box in grid points (≥ 1).
+    half_refine : int
+        Half-width of the wind refinement box in grid points (≥ 1).
+
+    Returns
+    -------
+    cy : xr.DataArray
+        Latitudinal (y) grid-point index of the cyclone centre, shape ``(time,)``.
+    cx : xr.DataArray
+        Longitudinal (x) grid-point index of the cyclone centre, shape ``(time,)``.
+
+    Raises
+    ------
+    ValueError
+        If ``mslp``, ``zonal_10m``, and ``merid_10m`` do not share the same
+        dimensions, if ``time_dim`` is absent, or if ``half_search`` or
+        ``half_refine`` is less than 1.
+    """
+
+    nix, njy = mslp.dims[-1], mslp.dims[-2]
+    ny = mslp.sizes[njy]
+    nx = mslp.sizes[nix]
+
+    if mslp.dims != zonal_10m.dims or mslp.dims != merid_10m.dims:
+        raise ValueError("mslp, zonal_10m and merid_10m must have the same dimensions")
+
+    if time_dim not in mslp.dims:
+        raise ValueError(f"Time dimension '{time_dim}' not found in mslp")
+
+    half_search = int(half_search)
+    half_refine = int(half_refine)
+    if half_search < 1 or half_refine < 1:
+        raise ValueError("half_search and half_refine must be >= 1")
+
+    nt = mslp.sizes[time_dim]
+    time_coord = mslp[time_dim]
+
+    cy = xr.DataArray(
+        np.full(nt, np.nan, dtype=np.float64),
+        dims=(time_dim,),
+        coords={time_dim: time_coord},
+    )
+    cx = xr.DataArray(
+        np.full(nt, np.nan, dtype=np.float64),
+        dims=(time_dim,),
+        coords={time_dim: time_coord},
+    )
+
+    wind_10m = np.hypot(zonal_10m, merid_10m)
+
+    # ------------------------------------------------------------------
+    # t = 0: global MSLP minimum then wind refinement over +/-half_refine
+    # ------------------------------------------------------------------
+    mslp0 = mslp.isel({time_dim: 0})
+    wind0 = wind_10m.isel({time_dim: 0})
+
+    idx_mslp0 = mslp0.argmin(dim=[njy, nix])
+    cy0_fg = int(idx_mslp0[njy])
+    cx0_fg = int(idx_mslp0[nix])
+
+    y_min0 = max(0, cy0_fg - half_refine)
+    y_max0 = min(ny - 1, cy0_fg + half_refine)
+    x_min0 = max(0, cx0_fg - half_refine)
+    x_max0 = min(nx - 1, cx0_fg + half_refine)
+
+    wind0_sub = wind0.isel(
+        {
+            njy: slice(y_min0, y_max0 + 1),
+            nix: slice(x_min0, x_max0 + 1),
+        }
+    )
+
+    if bool(wind0_sub.isnull().all()):
+        idx_wind0 = wind0.argmin(dim=[njy, nix])
+        cy0 = int(idx_wind0[njy])
+        cx0 = int(idx_wind0[nix])
+    else:
+        idx_wind0 = wind0_sub.argmin(dim=[njy, nix])
+        cy0_rel = int(idx_wind0[njy])
+        cx0_rel = int(idx_wind0[nix])
+        cy0 = y_min0 + cy0_rel
+        cx0 = x_min0 + cx0_rel
+
+    cy.loc[{time_dim: time_coord[0]}] = cy0
+    cx.loc[{time_dim: time_coord[0]}] = cx0
+    cy_prev, cx_prev = cy0, cx0
+
+    # ------------------------------------------------------------------
+    # t >= 1: MSLP search over +/-half_search, wind refinement over +/-half_refine
+    # ------------------------------------------------------------------
+    for it in range(1, nt):
+        t_val = time_coord[it]
+
+        mslp_t = mslp.isel({time_dim: it})
+        wind_t = wind_10m.isel({time_dim: it})
+
+        # 1) MSLP search box around the previous centre
+        y_min = max(0, cy_prev - half_search)
+        y_max = min(ny - 1, cy_prev + half_search)
+        x_min = max(0, cx_prev - half_search)
+        x_max = min(nx - 1, cx_prev + half_search)
+
+        mslp_sub = mslp_t.isel(
+            {
+                njy: slice(y_min, y_max + 1),
+                nix: slice(x_min, x_max + 1),
+            }
+        )
+
+        # 2) MSLP first guess (local, or global if all NaN)
+        if bool(mslp_sub.isnull().all()):
+            idx_mslp = mslp_t.argmin(dim=[njy, nix])
+            cy_fg = int(idx_mslp[njy])
+            cx_fg = int(idx_mslp[nix])
+        else:
+            idx_mslp = mslp_sub.argmin(dim=[njy, nix])
+            cy_rel = int(idx_mslp[njy])
+            cx_rel = int(idx_mslp[nix])
+            cy_fg = y_min + cy_rel
+            cx_fg = x_min + cx_rel
+
+        # 3) wind refinement around the first guess (box +/-half_refine)
+        y2_min = max(0, cy_fg - half_refine)
+        y2_max = min(ny - 1, cy_fg + half_refine)
+        x2_min = max(0, cx_fg - half_refine)
+        x2_max = min(nx - 1, cx_fg + half_refine)
+
+        wind_sub = wind_t.isel(
+            {
+                njy: slice(y2_min, y2_max + 1),
+                nix: slice(x2_min, x2_max + 1),
+            }
+        )
+
+        if bool(wind_sub.isnull().all()):
+            idx_wind = wind_t.argmin(dim=[njy, nix])
+            cy_new = int(idx_wind[njy])
+            cx_new = int(idx_wind[nix])
+        else:
+            idx_wind = wind_sub.argmin(dim=[njy, nix])
+            cy_rel = int(idx_wind[njy])
+            cx_rel = int(idx_wind[nix])
+            cy_new = y2_min + cy_rel
+            cx_new = x2_min + cx_rel
+
+        cy.loc[{time_dim: t_val}] = cy_new
+        cx.loc[{time_dim: t_val}] = cx_new
+        cy_prev, cx_prev = cy_new, cx_new
+
+    return cy.astype(int), cx.astype(int)
+
+
+@register_tracker
+class PressureWindTracker(TcTracker):
+    name = "wind_pressure"
+    required_fields = ("prmsl", "u10", "v10")
+
+    SEARCH_RADIUS_KM: ClassVar[float] = 100.0
+    REFINE_RADIUS_KM: ClassVar[float] = 50.0
+
+    def __init__(self, var_aliases, resolution_km: float):
+        """
+        Parameters
+        ----------
+        var_aliases : Mapping[str, str]
+            Variable alias mapping (logical name → native name in dataset).
+        resolution_km : float
+            Model grid spacing in **metres** (converted internally to km).
+            Used to derive ``half_search`` and ``half_refine`` in grid points.
+        """
+        super().__init__(var_aliases=var_aliases)
+
+        self.resolution_km = float(resolution_km) / 1000.0
+
+        half_search = int(np.ceil(self.SEARCH_RADIUS_KM / self.resolution_km))
+        half_refine = int(np.ceil(self.REFINE_RADIUS_KM / self.resolution_km))
+
+        self.half_search_indices = max(1, half_search)
+        self.half_refine_indices = max(1, half_refine)
+
+    @classmethod
+    def from_config(cls, conf: SimulationConfig) -> "PressureWindTracker":
+        """
+        Build a :class:`PressureWindTracker` from a simulation configuration.
+
+        Parameters
+        ----------
+        conf : SimulationConfig
+            Configuration object.  Reads ``tracking_var_aliases`` and
+            ``resolution`` (grid spacing in metres).
+
+        Returns
+        -------
+        PressureWindTracker
+        """
+        var_aliases = getattr(conf, "tracking_var_aliases", {}) or {}
+        resolution_km = conf.resolution  # in metres; converted to km below
+        return cls(var_aliases=var_aliases, resolution_km=resolution_km)
+
+    def _track_method(self, ds: xr.Dataset) -> xr.Dataset:
+        """
+        Apply :func:`pressure_wind_tracker` to the flat dataset.
+
+        Parameters
+        ----------
+        ds : xr.Dataset
+            Flat tracking dataset.  Must contain the fields aliased to
+            ``"mslp"``, ``"u10m"``, and ``"v10m"``.
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset with variables ``cy(time)`` and ``cx(time)``.
+        """
+        mslp = self._field(ds, "mslp")
+        u10 = self._field(ds, "u10m")
+        v10 = self._field(ds, "v10m")
+
+        cy, cx = pressure_wind_tracker(
+            mslp=mslp,
+            zonal_10m=u10,
+            merid_10m=v10,
+            time_dim="time",
+            half_search=self.half_search_indices,
+            half_refine=self.half_refine_indices,
+        )
+
+        return xr.Dataset({"cy": cy, "cx": cx})

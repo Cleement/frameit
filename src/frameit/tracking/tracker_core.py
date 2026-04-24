@@ -1,0 +1,293 @@
+# Copyright 2026 Clément Soufflet, Météo-France
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file or http://www.apache.org/licenses/LICENSE-2.0
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import ClassVar
+
+import xarray as xr
+
+from frameit.core.settings_class import SimulationConfig
+
+
+@dataclass
+class TcTracker(ABC):
+    """
+    Abstract base class for all tropical cyclone trackers.
+
+    Subclasses must define:
+
+    - ``name`` : method name (key in ``ds_tree`` and the YAML config),
+    - ``logical_fields`` : canonical variable names expected in the dataset,
+    - ``_track_method`` : concrete tracking implementation.
+
+    The tracker receives, via :meth:`__call__`, a hierarchical dict
+    ``ds_tree[method][vertical_group] -> xr.Dataset``.
+    """
+
+    # mapping "logical name" -> "native name in model files"
+    var_aliases: Mapping[str, str] = field(default_factory=dict)
+
+    # Method name (key in ds_tree and in the YAML config)
+    name: ClassVar[str] = "method"
+
+    # LOGICAL names expected (u10, v10, mslp, etc.)
+    logical_fields: ClassVar[Sequence[str]] = ()
+
+    # Effective names in the Dataset (derived from logical_fields + var_aliases)
+    effective_fields: tuple[str, ...] = field(init=False)
+
+    def __post_init__(self) -> None:
+        # For each logical name, retrieve the native name; if absent, assume the same name
+        self.effective_fields = tuple(self.var_aliases.get(f, f) for f in self.logical_fields)
+
+    @classmethod
+    def from_config(cls, conf: SimulationConfig) -> TcTracker:
+        """
+        Construct a tracker instance from a simulation configuration.
+
+        Parameters
+        ----------
+        conf : SimulationConfig
+            Configuration object.  Reads ``tracking_var_aliases`` (optional).
+
+        Returns
+        -------
+        TcTracker
+            Tracker instance with variable aliases from ``conf``.
+
+        Notes
+        -----
+        Subclasses may override this method to read additional parameters
+        from the configuration.
+        """
+        var_aliases = getattr(conf, "tracking_var_aliases", {}) or {}
+        return cls(var_aliases=var_aliases)
+
+    def __call__(
+        self,
+        ds_tree: Mapping[str, Mapping[str, xr.Dataset]],
+    ) -> xr.Dataset:
+        """
+        Run the tracker on a hierarchical dataset tree.
+
+        Parameters
+        ----------
+        ds_tree : Mapping[str, Mapping[str, xr.Dataset]]
+            Nested mapping ``ds_tree[method][vertical_group] -> xr.Dataset``.
+
+        Returns
+        -------
+        xr.Dataset
+            Tracking result as returned by :meth:`_track_method`, containing
+            at minimum ``cx(time)`` and ``cy(time)`` grid-point index arrays.
+
+        Raises
+        ------
+        ValueError
+            If required effective fields are missing from the flat dataset.
+        """
+
+        ds_flat = make_tracking_dataset(ds_tree, self.name)
+        self._validate_inputs(ds_flat)
+        return self._track_method(ds_flat)
+
+    # ------------------ generic helpers ------------------
+
+    def _validate_inputs(self, ds: xr.Dataset) -> None:
+        """Check that all effective variables are present."""
+        missing = [v for v in self.effective_fields if v not in ds]
+        if missing:
+            raise ValueError(f"{self.name}: missing required fields in Dataset: {missing}")
+
+    def _field(self, ds: xr.Dataset, logical_name: str) -> xr.DataArray:
+        """
+        Retrieve a field by its logical name, applying ``var_aliases``.
+
+        Parameters
+        ----------
+        ds : xr.Dataset
+            Flat tracking dataset.
+        logical_name : str
+            Canonical field name (e.g. ``"mslp"``, ``"u10m"``).
+
+        Returns
+        -------
+        xr.DataArray
+            The resolved field from ``ds``.
+
+        Raises
+        ------
+        KeyError
+            If the native name resolved via ``var_aliases`` is absent from ``ds``.
+        """
+        native = self.var_aliases.get(logical_name, logical_name)
+        try:
+            return ds[native]
+        except KeyError as exc:
+            raise KeyError(
+                f"{self.name}: logical field {logical_name!r} is mapped to "
+                f"{native!r}, but this variable is not present in Dataset"
+            ) from exc
+
+    @abstractmethod
+    def _track_method(self, ds: xr.Dataset) -> xr.Dataset:
+        """
+        Core tracking algorithm — must be implemented by every subclass.
+
+        Parameters
+        ----------
+        ds : xr.Dataset
+            Flat dataset produced by :func:`make_tracking_dataset`.
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset containing at least ``cx(time)`` and ``cy(time)``
+            (grid-point index arrays of the cyclone centre).
+        """
+
+    # -------------------------
+    # High-level API: hierarchical dict -> flat Dataset
+    # -------------------------
+    def track_from_tree(
+        self,
+        ds_tree: Mapping[str, Mapping[str, xr.Dataset]],
+    ) -> xr.Dataset:
+        """
+        Convenience wrapper: flatten ``ds_tree`` then apply the tracker.
+
+        Parameters
+        ----------
+        ds_tree : Mapping[str, Mapping[str, xr.Dataset]]
+            Nested mapping ``ds_tree[method][vertical_group] -> xr.Dataset``.
+
+        Returns
+        -------
+        xr.Dataset
+            Tracking result (see :meth:`_track_method`).
+        """
+        ds_flat = make_tracking_dataset(ds_tree, self.name)
+        return self(ds_flat)
+
+
+# --------------------------------------------------------------------
+# Flatten function shared by all trackers
+# --------------------------------------------------------------------
+
+
+def make_tracking_dataset(
+    ds_tree: Mapping[str, Mapping[str, xr.Dataset]],
+    method: str,
+) -> xr.Dataset:
+    """
+    Merge all vertical-group datasets for a given tracking method into one.
+
+    Parameters
+    ----------
+    ds_tree : Mapping[str, Mapping[str, xr.Dataset]]
+        Nested mapping ``ds_tree[method][vertical_group] -> xr.Dataset``.
+    method : str
+        Tracking method key to look up in ``ds_tree``.
+
+    Returns
+    -------
+    xr.Dataset
+        Flat dataset produced by merging all vertical groups for ``method``.
+
+    Raises
+    ------
+    ValueError
+        If ``method`` is not a key of ``ds_tree`` or if its sub-dict is empty.
+    TypeError
+        If a value in the sub-dict is not an :class:`xr.Dataset`.
+    """
+    try:
+        method_group = ds_tree[method]
+    except KeyError as exc:
+        raise ValueError(f"Tracking method {method!r} not found in ds_tree") from exc
+
+    datasets = []
+    for vert_group, ds in method_group.items():
+        if not isinstance(ds, xr.Dataset):
+            raise TypeError(
+                f"For method {method!r}, vertical group {vert_group!r} "
+                f"should be an xarray.Dataset, got {type(ds)}"
+            )
+        datasets.append(ds)
+
+    if not datasets:
+        raise ValueError(f"No Dataset found for method {method!r} in ds_tree")
+
+    ds_flat = xr.merge(datasets, compat="no_conflicts")
+    return ds_flat
+
+
+# --------------------------------------------------------------------
+# Registre de trackers
+# --------------------------------------------------------------------
+
+TRACKER_REGISTRY: dict[str, type[TcTracker]] = {}
+
+
+def register_tracker(cls: type[TcTracker]) -> type[TcTracker]:
+    """
+    Class decorator to register a tracker in :data:`TRACKER_REGISTRY`.
+
+    Parameters
+    ----------
+    cls : type[TcTracker]
+        Tracker class whose ``name`` attribute is used as the registry key.
+
+    Returns
+    -------
+    type[TcTracker]
+        The same class, unchanged.
+
+    Raises
+    ------
+    ValueError
+        If ``cls.name`` is already present in the registry.
+    """
+    if cls.name in TRACKER_REGISTRY:
+        raise ValueError(f"Tracker name already registered: {cls.name}")
+    TRACKER_REGISTRY[cls.name] = cls
+    return cls
+
+
+# --------------------------------------------------------------------
+# Factory from config
+# --------------------------------------------------------------------
+
+
+def build_tracker_from_config(conf: SimulationConfig) -> TcTracker:
+    """
+    Instantiate the tracker selected by ``conf.tracking_method``.
+
+    Parameters
+    ----------
+    conf : SimulationConfig
+        Configuration object.  Reads ``tracking_method`` to look up the
+        registered tracker class.
+
+    Returns
+    -------
+    TcTracker
+        Tracker instance built via the class's :meth:`TcTracker.from_config`.
+
+    Raises
+    ------
+    ValueError
+        If ``conf.tracking_method`` is not in :data:`TRACKER_REGISTRY`.
+    """
+    method = conf.tracking_method
+    try:
+        tracker_cls = TRACKER_REGISTRY[method]
+    except KeyError:
+        raise ValueError(f"Unknown tracking method: {method!r}") from None
+
+    return tracker_cls.from_config(conf)

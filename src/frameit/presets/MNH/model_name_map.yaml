@@ -1,0 +1,32 @@
+# Static key for MNH model configuration
+
+# Name of dimension and coords
+# ----------------------------
+
+name_time_dim: "time"
+name_vertical_dim: "level"
+name_lat_dim: "nj"
+name_lon_dim: "ni"
+
+# Latitude/loongitude vectors
+# ----------------------------
+name_latitude: "latitude"
+name_longitude: "longitude"
+
+
+# Name of velocities
+# ------------------
+velocity_aliases : 
+  u_velocity: "UT"
+  v_velocity: "VT"
+  w_velocity: "WT"
+
+# Name of variables for trackers
+# -------------------------------
+tracking_var_aliases:
+  u10m: "UM10"
+  v10m: "VM10"
+  mslp: "MSLP"
+  pv:   "POVOT"
+  geopot: "geopotential"
+

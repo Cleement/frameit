@@ -1,0 +1,25 @@
+image: python:3.11
+
+variables:
+  PIP_TRUSTED_HOST: "pypi.org pypi.python.org files.pythonhosted.org"
+
+stages:
+  - deploy
+
+pages:
+  stage: deploy
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r docs/docs-requirements.txt
+    - pip install -e . # Install frameit
+    - cd docs
+    - make clean
+    - make html
+    - rm -rf ../public
+    - mv build/html ../public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == "test-ci"
