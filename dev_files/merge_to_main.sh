@@ -7,6 +7,7 @@
 #     ./dev_files/merge_to_main.sh              # default commit message
 #     ./dev_files/merge_to_main.sh "my message" # custom commit message
 # --------------------------------------------------------------------
+#
 
 set -e
 
