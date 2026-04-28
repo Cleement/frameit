@@ -106,3 +106,6 @@ Copyright 2026 Soufflet Clément - Météo-France
 FrameIt was developed at Météo-France.
 
 - Clément Soufflet — Météo-France
+- Kevin Hoarau — CNRS
+- Adrien Colomb — Météo-France
+- Remi Laxenaire — Météo-France
