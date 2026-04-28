@@ -96,7 +96,8 @@ def _reshape_locstream_dataset(
         new_dims = tuple(other_dims + ["rr", "theta_deg"])
 
         # only keep 1D "index-like" coords from xesmf output
-        coords: dict[str, Any] = {"rr": ("rr", r_km), "theta_deg": ("theta_deg", theta_deg)}
+        coords: dict[str, Any] = {"rr": ("rr", np.arange(len(r_km))), "rr_km": ("rr", r_km),
+                                  "theta_deg": ("theta_deg", theta_deg)}
         for d in other_dims:
             if d in da.coords and da.coords[d].ndim == 1 and da.coords[d].dims == (d,):
                 coords[d] = da.coords[d]
@@ -327,7 +328,7 @@ def polar_project(
     ds_polar_grid = grid.build(ds_ref).reset_coords(drop=True)
 
     lon_polar, lat_polar = _polar_lonlat_from_grid(ds_polar_grid)
-    r_km = np.asarray(ds_polar_grid["rr"].values, dtype=float)
+    r_km = np.asarray(grid.r_km, dtype=float)
     theta_deg = np.asarray(ds_polar_grid["theta_deg"].values, dtype=float)
     nr = int(r_km.size)
     ntheta = int(theta_deg.size)

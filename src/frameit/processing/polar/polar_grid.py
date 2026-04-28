@@ -303,7 +303,7 @@ class PolarLonLatGrid:
             - ``x_km(rr, theta_deg)``: local Easting offset, km.
             - ``y_km(rr, theta_deg)``: local Northing offset, km.
 
-            And coordinates ``r_km`` (on dim "rr") and ``theta_deg``.
+            And coordinates ``rr_km`` (on dim "rr") and ``theta_deg``.
 
         Notes
         -----
@@ -388,7 +388,7 @@ class PolarLonLatGrid:
             ),
             coords=dict(
                 **{self.time_dim: time},
-                r_km=("rr", self.r_km),
+                rr_km=("rr", self.r_km),
                 theta_deg=("theta_deg", self.theta_deg),
             ),
             attrs=dict(
