@@ -96,8 +96,7 @@ def _reshape_locstream_dataset(
         new_dims = tuple(other_dims + ["rr", "theta_deg"])
 
         # only keep 1D "index-like" coords from xesmf output
-        coords: dict[str, Any] = {"rr": ("rr", np.arange(len(r_km))), "rr_km": ("rr", r_km),
-                                  "theta_deg": ("theta_deg", theta_deg)}
+        coords: dict[str, Any] = {"rr": ("rr", r_km), "theta_deg": ("theta_deg", theta_deg)}
         for d in other_dims:
             if d in da.coords and da.coords[d].ndim == 1 and da.coords[d].dims == (d,):
                 coords[d] = da.coords[d]
@@ -464,6 +463,7 @@ def polar_project(
                     ds_pol = ds_pol.assign_coords({"x_km": (("rr", "theta_deg"), xkm)})
                 if ykm is not None:
                     ds_pol = ds_pol.assign_coords({"y_km": (("rr", "theta_deg"), ykm)})
+                ds_pol = ds_pol.assign_coords({"rr_km": ("rr", r_km)})
 
                 pieces = [ds_pol]
 
@@ -509,6 +509,7 @@ def polar_project(
                         ds_pol = ds_pol.assign_coords({"x_km": (("rr", "theta_deg"), xkm)})
                     if ykm is not None:
                         ds_pol = ds_pol.assign_coords({"y_km": (("rr", "theta_deg"), ykm)})
+                    ds_pol = ds_pol.assign_coords({"rr_km": ("rr", r_km)})
 
                     pieces.append(ds_pol)
 
