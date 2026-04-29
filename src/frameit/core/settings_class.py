@@ -32,11 +32,6 @@ ModelName = Literal["AROME", "MNH"]
 TrackingMethod = Literal["wind_pressure", "fixed_box", "prescribed_track"]  # extend as needed
 
 
-def _ensure_len(seq, n: int, name: str):
-    if len(seq) != n:
-        raise ValueError(f"{name} must have length {n}, got {len(seq)}")
-
-
 @dataclass
 class SimulationConfig:
     # Identity and file pattern
@@ -249,6 +244,16 @@ class SimulationConfig:
         self.file_name_prefix = self.file_name_prefix or ""
         self.file_name_suffix = self.file_name_suffix or ""
         self.file_type = self.file_type or ""
+        
+        if self.compute_polar_proj:
+            if self.radial_resolution == 0:
+                self.radial_resolution = float(self.resolution)
+            elif self.radial_resolution < self.resolution:
+                raise ValueError(
+                    f"radial_resolution={self.radial_resolution:.0f} m is finer than "
+                    f"the native grid resolution={self.resolution} m. "
+                    "Interpolating to a finer radial grid than the source data is not meaningful."
+                    )
 
     # -----------------------
     # Constructors
