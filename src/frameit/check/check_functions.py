@@ -186,3 +186,82 @@ def check_group_var(by_group: dict, requests: dict) -> dict:
                 logger.info("\t\t\t[%s] All requested variables are present (%d).", key, len(exp))
 
     return {"\t\t\tignored_groups": ignored_flat, "missing_by_group": missing_flat}
+
+def check_resolution(
+    dict_user: dict[str, xr.Dataset],
+    conf,
+    *,
+    tol: float = 0.1,
+) -> None:
+    """
+    Verify that the declared grid resolution matches the actual data spacing.
+
+    Parameters
+    ----------
+    dict_user : dict[str, xr.Dataset]
+        Loaded user datasets keyed by group name.
+    conf : SimulationConfig
+        Configuration object. Reads ``resolution``, ``name_latitude``,
+        and ``name_longitude``.
+    tol : float, optional
+        Maximum accepted relative difference between declared and estimated
+        resolution. Default 0.1 (10%).
+
+    Raises
+    ------
+    ValueError
+        If the relative difference exceeds ``tol``.
+    """
+    from pyproj import Geod
+
+    declared_m = float(conf.resolution)
+    lat_name = getattr(conf, "name_latitude", None)
+    lon_name = getattr(conf, "name_longitude", None)
+
+    if not lat_name or not lon_name:
+        return
+
+    ds_ref = next((ds for ds in dict_user.values() if ds is not None), None)
+    if ds_ref is None:
+        return
+
+    if lat_name not in ds_ref or lon_name not in ds_ref:
+        return
+
+    lat = np.asarray(ds_ref[lat_name].values, dtype=float)
+    lon = np.asarray(ds_ref[lon_name].values, dtype=float)
+
+    # For 2D coordinates, extract 1D slices along each axis
+    if lat.ndim == 2:
+        lat = lat[:, 0]
+    if lon.ndim == 2:
+        lon = lon[0, :]
+
+    if lat.size < 2 or lon.size < 2:
+        return
+
+    geod = Geod(ellps="WGS84")
+    lat_mean = float(np.mean(lat))
+    lon_mean = float(np.mean(lon))
+
+    # Estimate dy and dx from consecutive grid points
+    _, _, dy = geod.inv(lon_mean, lat[0], lon_mean, lat[1])
+    _, _, dx = geod.inv(lon[0], lat_mean, lon[1], lat_mean)
+    actual_m = (abs(dx) + abs(dy)) / 2.0
+
+    rel_diff = abs(actual_m - declared_m) / declared_m
+    if rel_diff > tol:
+        raise ValueError(
+            f"Resolution mismatch: conf.resolution={declared_m:.0f} m "
+            f"but estimated grid spacing is {actual_m:.0f} m "
+            f"(relative difference {rel_diff * 100:.1f}% > tolerance {tol * 100:.0f}%)."
+        )
+
+    logger.info(
+        "Resolution check passed: declared=%.0f m, estimated=%.0f m (diff=%.1f%%).",
+        declared_m,
+        actual_m,
+        rel_diff * 100,
+    )
+
+
