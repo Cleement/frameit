@@ -59,8 +59,10 @@ def ensure_theta_rad_dim(ds: xr.Dataset, *, theta_deg: str = "theta_deg") -> xr.
         units="degree", long_name="geodesic azimuth (clockwise from north)"
     )
 
+    if "rr_km" in ds.coords or "rr_km" in ds.variables:
+        ds["rr_km"].attrs.update(units="km", long_name="radial distance from center")
     if "rr" in ds.coords or "rr" in ds.variables:
-        ds["rr"].attrs.update(units="km", long_name="radial distance from center")
+        ds["rr"].attrs.update(long_name="radial index from center")
     else:
         logger.debug("ensure_theta_rad_dim: variable/coord 'r' not found, skipping r attrs update.")
 

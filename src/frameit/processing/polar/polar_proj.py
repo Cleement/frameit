@@ -108,8 +108,10 @@ def _reshape_locstream_dataset(
             attrs=da.attrs,
             name=da.name,
         )
-
+        
     return xr.Dataset(out_vars)
+
+
 
 
 # ----------------------------
@@ -327,7 +329,7 @@ def polar_project(
     ds_polar_grid = grid.build(ds_ref).reset_coords(drop=True)
 
     lon_polar, lat_polar = _polar_lonlat_from_grid(ds_polar_grid)
-    r_km = np.asarray(ds_polar_grid["rr"].values, dtype=float)
+    r_km = np.asarray(grid.r_km, dtype=float)
     theta_deg = np.asarray(ds_polar_grid["theta_deg"].values, dtype=float)
     nr = int(r_km.size)
     ntheta = int(theta_deg.size)
@@ -543,6 +545,9 @@ def polar_project(
         ds_group_out.attrs["polar_proj_group_output"] = out_key
 
         ds_group_out = finalize_polar_output(ds_group_out)
+        
+        ds_group_out = ds_group_out.assign_coords({"rr_km": xr.DataArray(r_km, dims=("rr",), 
+                                attrs={"units": "km", "long_name": "radial distance from center"})})
 
         if out_key in dico_out:
             dico_out[out_key] = xr.merge([dico_out[out_key], ds_group_out], compat="no_conflicts")

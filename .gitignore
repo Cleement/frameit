@@ -240,3 +240,6 @@ tests/
 
 # Claude Code local settings
 .claude/
+
+#vizualization
+example/Ktests_cyclone/viz.ipynb
