@@ -72,7 +72,7 @@ frameit_output_dir: "/cnrm/mlac/NO_SAVE/souffletc/Ideal_CILIDA/SIMULATION/DATA_t
 
 # Polar projection parameter
 compute_polar_proj: true
-radiale_resolution: 2000
+radial_resolution: 2000
 azimuthal_resolution: 3
 field_orientation: "geodesic"
 polar_variables: 

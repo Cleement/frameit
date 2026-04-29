@@ -72,7 +72,7 @@ requested_variables_user:
 # --------------------------
 
 compute_polar_proj: true
-radiale_resolution: 2500     # resolution in radiale direction (int,[m]) (usally same as horizontal resolution)
+radial_resolution: 2500     # resolution in radiale direction (int,[m]) (usally same as horizontal resolution)
 azimuthal_resolution: 10  # resolution in azimuthal direction (int,[deg])
 field_orientation: "geodesic"
 polar_variables:

@@ -108,8 +108,10 @@ def _reshape_locstream_dataset(
             attrs=da.attrs,
             name=da.name,
         )
-
+        
     return xr.Dataset(out_vars)
+
+
 
 
 # ----------------------------
@@ -463,7 +465,6 @@ def polar_project(
                     ds_pol = ds_pol.assign_coords({"x_km": (("rr", "theta_deg"), xkm)})
                 if ykm is not None:
                     ds_pol = ds_pol.assign_coords({"y_km": (("rr", "theta_deg"), ykm)})
-                ds_pol = ds_pol.assign_coords({"rr_km": ("rr", r_km)})
 
                 pieces = [ds_pol]
 
@@ -509,7 +510,6 @@ def polar_project(
                         ds_pol = ds_pol.assign_coords({"x_km": (("rr", "theta_deg"), xkm)})
                     if ykm is not None:
                         ds_pol = ds_pol.assign_coords({"y_km": (("rr", "theta_deg"), ykm)})
-                    ds_pol = ds_pol.assign_coords({"rr_km": ("rr", r_km)})
 
                     pieces.append(ds_pol)
 
@@ -545,6 +545,9 @@ def polar_project(
         ds_group_out.attrs["polar_proj_group_output"] = out_key
 
         ds_group_out = finalize_polar_output(ds_group_out)
+        
+        ds_group_out = ds_group_out.assign_coords({"rr_km": xr.DataArray(r_km, dims=("rr",), 
+                                attrs={"units": "km", "long_name": "radial distance from center"})})
 
         if out_key in dico_out:
             dico_out[out_key] = xr.merge([dico_out[out_key], ds_group_out], compat="no_conflicts")
