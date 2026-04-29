@@ -114,6 +114,32 @@ Metadata includes:
 - ``polar_proj_method`` (for example ``"bilinear"``)
 - provenance of requested, source, and output groups.
 
+Derived wind components
+~~~~~~~~~~~~~~~~~~~~~~~
+If the zonal (``u``) and meridional (``v``) wind components are included in
+``polar_variables``, FrameIt automatically computes the radial and tangential
+wind components on the polar grid and adds them to the output dataset:
+
+- ``vrad``: radial wind component, positive **outward** from the storm centre.
+- ``vtan``: tangential wind component, positive for **clockwise** rotation.
+
+The components are derived from the geodesic azimuth ``theta`` (radians,
+clockwise from North):
+
+.. math::
+
+   v_\mathrm{rad} = u \sin\theta + v \cos\theta
+
+   v_\mathrm{tan} = u \cos\theta - v \sin\theta
+
+The target group is ``heightAboveGround`` for AROME and ``level`` for MNH.
+If ``u`` or ``v`` are absent from the projected dataset, or if the ``theta``
+coordinate is missing, the computation is silently skipped.
+
+``wind_speed`` is also computed on the polar grid by the same rule as for the
+Cartesian outputs (see :doc:`/user_guide/output_files`).
+
+
 Known limitations and caveats
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Interpolation and physical interpretation
