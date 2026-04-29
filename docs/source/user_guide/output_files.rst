@@ -58,6 +58,18 @@ Typical structure:
   ``y_box_km``) when available
 - Data variables depend on the YAML request (see :doc:`configuration_file`)
 
+Derived wind variables
+''''''''''''''''''''''
+If the zonal (``u``) and meridional (``v``) wind components are included in the
+requested variables, FrameIt automatically computes and appends ``wind_speed`` to
+the target group (``heightAboveGround`` for AROME, ``level`` for MNH):
+
+.. math::
+
+   \mathrm{wind\_speed} = \sqrt{u^2 + v^2}
+
+If ``u`` or ``v`` are absent from the group, the computation is silently skipped.
+
 If you export cartesian crops, you obtain one file per vertical group, which keeps the outputs modular
 and avoids mixing incompatible vertical coordinates in a single file.
 
