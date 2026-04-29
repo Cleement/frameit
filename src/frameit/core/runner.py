@@ -8,7 +8,7 @@ from pathlib import Path
 
 import xarray as xr
 
-from frameit.check.check_functions import check_group_var
+from frameit.check.check_functions import check_group_var, check_resolution
 from frameit.io.grib_utils import concat_grib2ds_by_vert_coord
 from frameit.io.netcdf_utils import concat_nc2ds_by_vert_coord
 from frameit.processing.extraction import extract_data
@@ -196,6 +196,7 @@ class FrameitRunner:
         logger.info("Datasets asked by tracker:")
         req_trk = (requested_vars_tracker or {}).get(tracking_method, {})
         check_group_var(dict_tracker, req_trk)
+        check_resolution(dict_user, self.conf)
 
         return dict_user, dict_tracker, files
 
