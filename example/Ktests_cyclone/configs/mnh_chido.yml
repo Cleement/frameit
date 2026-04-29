@@ -16,7 +16,7 @@ file_type: "nc"
 atm_model: "MNH"
 ocean_model: "None"
 wave_model: "None"
-resolution: 2000
+resolution: 3000
 comment: "Chido simulation MNH"
 
 # Debug flag
@@ -72,7 +72,7 @@ frameit_output_dir: "/cnrm/mlac/NO_SAVE/souffletc/Ideal_CILIDA/SIMULATION/DATA_t
 
 # Polar projection parameter
 compute_polar_proj: true
-radial_resolution: 2000
+radial_resolution: 1000
 azimuthal_resolution: 3
 field_orientation: "geodesic"
 polar_variables: 

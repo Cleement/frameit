@@ -19,6 +19,7 @@ Author: C. SOUFFLET
 from __future__ import annotations
 
 import copy
+import logging
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -27,14 +28,11 @@ import yaml
 
 from frameit.io.loader import load_config_with_model_presets
 
+logger = logging.getLogger(__name__)
+
 # Restricted types for a few key fields
 ModelName = Literal["AROME", "MNH"]
 TrackingMethod = Literal["wind_pressure", "fixed_box", "prescribed_track"]  # extend as needed
-
-
-def _ensure_len(seq, n: int, name: str):
-    if len(seq) != n:
-        raise ValueError(f"{name} must have length {n}, got {len(seq)}")
 
 
 @dataclass
@@ -249,6 +247,26 @@ class SimulationConfig:
         self.file_name_prefix = self.file_name_prefix or ""
         self.file_name_suffix = self.file_name_suffix or ""
         self.file_type = self.file_type or ""
+        
+        if self.compute_polar_proj:
+            if self.radial_resolution is not None and self.radial_resolution < 0:
+                raise ValueError(
+                    f"radial_resolution={self.radial_resolution} m must be positive."
+                )
+            if not self.radial_resolution:
+                logger.warning(
+                    "radial_resolution not set, defaulting to native resolution=%d m.",
+                    self.resolution,
+                )
+                self.radial_resolution = float(self.resolution)
+            elif self.radial_resolution < self.resolution:
+                raise ValueError(
+                    f"radial_resolution={self.radial_resolution:.0f} m is finer than "
+                    f"the native grid resolution={self.resolution} m. "
+                    "Interpolating to a finer radial grid than the source data is not meaningful."
+                )
+
+
 
     # -----------------------
     # Constructors
