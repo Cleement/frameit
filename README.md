@@ -30,7 +30,7 @@ are not available via pip.
 
 1. Clone the repository
 ```bash
-git clone https://git.meteo.fr/souffletc/frameit
+git clone https://github.com/meteofrance/frameit
 cd frameit
 ```
 2. Create and activate the conda environment
@@ -72,7 +72,7 @@ normalized NetCDF outputs to the directory specified in `frameit_output_dir`.
 
 ## Documentation
 
-The full documentation is available at: *[URL to be added]*
+The full documentation is available at: *[https://meteofrance.github.io/frameit/]*
 
 It includes:
 
@@ -90,7 +90,7 @@ If you use FrameIt in your research, please cite it as follows:
   title     = {FrameIt: Focused Regional Analysis of Modeled Events with Integrated Tracking},
   year      = {2026},
   publisher = {Météo-France},
-  url       = {https://git.meteo.fr/souffletc/frameit},
+  url       = {https://github.com/meteofrance/frameit},
   version   = {1.0}
 }
 ```
